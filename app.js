@@ -15,10 +15,7 @@ require('dotenv').config();
 var userRouter = require('./routes/user');
 var relationshipRouter = require('./routes/relationship');
 var wordRouter = require('./routes/word');
-var badgeRouter = require('./routes/badge');
-var missionRouter = require('./routes/mission');
-var notificationRouter = require('./routes/notification');
-var exerciseRouter = require('./routes/exercise');
+
 
 var app = express();
 
@@ -50,10 +47,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api/user', userRouter);
 app.use('/api/relationship', relationshipRouter);
 app.use('/api/word', wordRouter);
-app.use('/api/badge', badgeRouter);
-app.use('/api/mission', missionRouter);
-app.use('/api/notification', notificationRouter);
-app.use('/api/exercise', exerciseRouter);
+
 
 
 
