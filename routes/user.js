@@ -9,33 +9,51 @@ const getPool = async () => {
     return pool;
 };
 
-/* POST SIGN IN */
-router.post('/signin', async (req, res) => {
-    try {
-        const { username, password } = req.body;
-        if (!username || !password) {
-            return res.status(400).json({ success: false, message: 'Thiếu thông tin đăng nhập' });
-        }
-
-        const pool = await getPool();
-        const result = await pool.request()
-            .input('username', sql.NVarChar, username)
-            .input('password', sql.NVarChar, password)
-            .query('SELECT userID, username, fullName, role FROM [User] WHERE username = @username AND password = @password');
-
-        if (result.recordset.length === 0) {
-            return res.status(401).json({ success: false, message: "Sai username hoặc password!" });
-        }
-
-        res.json({
-            success: true,
-            user: result.recordset[0]
-        });
-
-    } catch (error) {
-        console.error("Lỗi API Đăng nhập:", error);
-        res.status(500).json({ success: false, message: 'Lỗi máy chủ nội bộ' });
+/* GET users listing. */
+router.post('/signin', async (req, res) => { 
+  try {
+    const { username, password } = req.body;
+    
+    // 1. Kiểm tra xem client có gửi thiếu dữ liệu không
+    if (!username || !password) {
+        return res.status(400).json({ success: false, message: 'Vui lòng nhập đủ username và password' });
     }
+
+    const pool = await poolPromise;
+    
+    // 2. Sử dụng LEFT JOIN để lấy thông tin base từ User và các chỉ số riêng từ Student
+    const result = await pool.request()
+        .input('username', sql.NVarChar(255), username)
+        .input('password', sql.NVarChar(255), password)
+        .query(`
+            SELECT 
+                u.userID, u.username, u.fullName, u.role,
+                s.weeklyExp, s.totalExp, s.streak
+            FROM [User] u
+            LEFT JOIN [Student] s ON u.userID = s.studentID
+            WHERE u.username = @username AND u.password = @password
+        `); 
+
+    // 3. Nếu không có dòng nào trả về -> Sai thông tin đăng nhập
+    if (result.recordset.length === 0) {
+        return res.status(401).json({ 
+            success: false, 
+            message: "Sai username hoặc password!" 
+        });
+    }
+
+    // 4. Lấy dữ liệu và trả về
+    const userData = result.recordset[0];
+    res.json({ 
+        success: true, 
+        message: 'Đăng nhập thành công!', 
+        user: userData 
+    });
+
+  } catch (error) {
+    console.error("Lỗi API Đăng nhập:", error);
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống máy chủ' });
+  }
 });
 
 /* POST SIGN UP */

@@ -1,3 +1,5 @@
+
+require('dotenv').config();
 var createError = require('http-errors');
 var express = require('express');
 var path = require('path');
@@ -8,7 +10,7 @@ var logger = require('morgan');
 // 1. THÊM THƯ VIỆN SQL SERVER VÀ ĐỌC BIẾN MÔI TRƯỜNG
 // ========================================================
 var sql = require('mssql');
-require('dotenv').config();
+
 
 
 
