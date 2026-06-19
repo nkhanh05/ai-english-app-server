@@ -1,4 +1,5 @@
 {
     "appService.defaultWebAppToDeploy": "/subscriptions/06f838df-6015-4e14-9230-15f53108b524/resourceGroups/inClass/providers/Microsoft.Web/sites/ai-english-app",
-    "appService.deploySubpath": "."
+    "appService.deploySubpath": ".",
+    "liveServer.settings.port": 5501
 }

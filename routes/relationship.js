@@ -1,11 +1,9 @@
-var express = require('express');
-var router = express.Router();
-
 /* GET home page. */
+
 const express = require('express');
 const router = express.Router();
 const sql = require('mssql');
-const { poolPromise } = require('./db'); // Điều chỉnh lại đường dẫn tới file cấu hình DB của bạn
+const { poolPromise } = require('../db'); // Điều chỉnh lại đường dẫn tới file cấu hình DB của bạn
 
 
 router.get('/friend/:userID', async function(req, res) {
