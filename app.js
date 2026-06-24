@@ -28,7 +28,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api/user', userRouter);
 app.use('/api/relationship', relationshipRouter);
 app.use('/api/word', wordRouter);
-// app.use('/api/student', studentRouter);
+app.use('/api/student', studentRouter);
+app.use('/api/exercise', exerciseRouter);
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {

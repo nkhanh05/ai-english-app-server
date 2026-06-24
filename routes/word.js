@@ -55,4 +55,40 @@ router.post('/addWord', async (req, res) => {
     }
 });
 
+// (Thêm vào routes/word.js)
+
+router.get('/:userID', async (req, res) => {
+    try {
+        const { userID } = req.params;
+        const { data, error } = await supabase
+            .from('User_Word')
+            .select('*, Word!inner(wordID, term, definition)')
+            .eq('userID', userID);
+
+        if (error) throw error;
+
+        // Định dạng lại data cho khớp với WordService.dart
+        const formattedWords = data.map(item => {
+            const { Word, ...rest } = item;
+            return { 
+                ...rest, 
+                wordID: Word.wordID,
+                term: Word.term, 
+                definition: Word.definition 
+            };
+        });
+
+        // Trả về đúng object mà Flutter đang mong đợi
+        res.status(200).json({
+            success: true,
+            words: formattedWords
+        });
+
+    } catch (err) {
+        console.error("Lỗi lấy từ vựng:", err);
+        res.status(500).json({ success: false, message: "Lỗi hệ thống: " + err.message });
+    }
+});
+
+
 module.exports = router;
