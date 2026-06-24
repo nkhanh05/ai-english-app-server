@@ -1,54 +1,44 @@
+// user.js
 var express = require('express');
 var router = express.Router();
-const { poolPromise, sql } = require('../db');
+const supabase = require('../db');
 
-// Helper kiểm tra kết nối Database
-const getPool = async () => {
-    const pool = await poolPromise;
-    if (!pool) throw new Error("Database connection failed");
-    return pool;
-};
-
-/* GET users listing. */
+/* POST SIGN IN */
 router.post('/signin', async (req, res) => { 
   try {
     const { username, password } = req.body;
     
-    // 1. Kiểm tra xem client có gửi thiếu dữ liệu không
     if (!username || !password) {
         return res.status(400).json({ success: false, message: 'Vui lòng nhập đủ username và password' });
     }
 
-    const pool = await poolPromise;
-    
-    // 2. Sử dụng LEFT JOIN để lấy thông tin base từ User và các chỉ số riêng từ Student
-    const result = await pool.request()
-        .input('username', sql.NVarChar(255), username)
-        .input('password', sql.NVarChar(255), password)
-        .query(`
-            SELECT 
-                u.userID, u.username, u.fullName, u.role,
-                s.weeklyExp, s.totalExp, s.streak
-            FROM [User] u
-            LEFT JOIN [Student] s ON u.userID = s.studentID
-            WHERE u.username = @username AND u.password = @password
-        `); 
+    // Truy vấn User JOIN với Student bằng cú pháp inner/left join của Supabase
+    const { data, error } = await supabase
+        .from('User')
+        .select(`
+            userID, username, fullName, role,
+            Student (weeklyExp, totalExp, streak)
+        `)
+        .eq('username', username)
+        .eq('password', password)
+        .single(); // Lấy duy nhất 1 record
 
-    // 3. Nếu không có dòng nào trả về -> Sai thông tin đăng nhập
-    if (result.recordset.length === 0) {
-        return res.status(401).json({ 
-            success: false, 
-            message: "Sai username hoặc password!" 
-        });
+    if (error || !data) {
+        return res.status(401).json({ success: false, message: "Sai username hoặc password!" });
     }
 
-    // 4. Lấy dữ liệu và trả về
-    const userData = result.recordset[0];
-    res.json({ 
-        success: true, 
-        message: 'Đăng nhập thành công!', 
-        user: userData 
-    });
+    // Format lại dữ liệu cho giống với code cũ của bạn
+    const userData = {
+        userID: data.userID,
+        username: data.username,
+        fullName: data.fullName,
+        role: data.role,
+        weeklyExp: data.Student?.[0]?.weeklyExp || 0,
+        totalExp: data.Student?.[0]?.totalExp || 0,
+        streak: data.Student?.[0]?.streak || 0
+    };
+
+    res.json({ success: true, message: 'Đăng nhập thành công!', user: userData });
 
   } catch (error) {
     console.error("Lỗi API Đăng nhập:", error);
@@ -64,48 +54,37 @@ router.post('/signup', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Vui lòng nhập đủ thông tin' });
         }
 
-        const pool = await getPool();
+        // 1. Kiểm tra tồn tại
+        const { data: existingUser } = await supabase
+            .from('User')
+            .select('userID')
+            .eq('username', username);
 
-        // Kiểm tra tồn tại
-        const checkUser = await pool.request()
-            .input('username', sql.NVarChar, username)
-            .query('SELECT userID FROM [User] WHERE username = @username');
-
-        if (checkUser.recordset.length > 0) {
+        if (existingUser && existingUser.length > 0) {
             return res.status(409).json({ success: false, message: "Username đã tồn tại!" });
         }
 
-        // Thực hiện Transaction
-        const transaction = new sql.Transaction(pool);
-        await transaction.begin();
+        // 2. Insert User mới (Supabase trả về ID tự sinh)
+        const { data: newUser, error: insertError } = await supabase
+            .from('User')
+            .insert([{ username, password, email, fullName, role: 'student' }])
+            .select('userID')
+            .single();
 
-        try {
-            const request = new sql.Request(transaction);
-            const insertUser = await request
-                .input('username', sql.NVarChar, username)
-                .input('password', sql.NVarChar, password)
-                .input('email', sql.NVarChar, email)
-                .input('fullName', sql.NVarChar, fullName)
-                .input('role', sql.NVarChar, 'student')
-                .query(`
-                    INSERT INTO [User] (username, password, email, fullName, role)
-                    VALUES (@username, @password, @email, @fullName, @role);
-                    SELECT SCOPE_IDENTITY() AS userID;
-                `);
+        if (insertError) throw insertError;
 
-            const newUserID = insertUser.recordset[0].userID;
+        // 3. Insert ID đó vào bảng Student
+        const { error: studentError } = await supabase
+            .from('Student')
+            .insert([{ studentID: newUser.userID }]);
 
-            await request
-                .input('uid', sql.Int, newUserID)
-                .query('INSERT INTO [Student] (studentID) VALUES (@uid)');
-
-            await transaction.commit();
-            
-            res.status(201).json({ success: true, message: 'Đăng ký thành công!', userID: newUserID });
-        } catch (err) {
-            await transaction.rollback();
-            throw err;
+        // Rollback thủ công nếu insert Student bị lỗi
+        if (studentError) {
+            await supabase.from('User').delete().eq('userID', newUser.userID);
+            throw studentError;
         }
+        
+        res.status(201).json({ success: true, message: 'Đăng ký thành công!', userID: newUser.userID });
 
     } catch (error) {
         console.error("Lỗi API Đăng ký:", error);
