@@ -2,8 +2,11 @@
 var express = require('express');
 var router = express.Router();
 const supabase = require('../db');
+const bcrypt = require('bcrypt'); // Khai báo thư viện bcrypt
 
-/* POST SIGN IN */
+const saltRounds = 10; // Thiết lập hệ số công việc (work factor)
+
+/* POST SIGN IN (ĐĂNG NHẬP) */
 router.post('/signin', async (req, res) => { 
   try {
     const { username, password } = req.body;
@@ -12,22 +15,28 @@ router.post('/signin', async (req, res) => {
         return res.status(400).json({ success: false, message: 'Vui lòng nhập đủ username và password' });
     }
 
-    // Truy vấn User JOIN với Student bằng cú pháp inner/left join của Supabase
+    // 1. Chỉ truy vấn bằng username để lấy mật khẩu băm từ DB về
     const { data, error } = await supabase
         .from('User')
         .select(`
-            userID, username, fullName, role,
+            userID, username, password, fullName, role,
             Student (weeklyExp, totalExp, streak)
         `)
         .eq('username', username)
-        .eq('password', password)
-        .single(); // Lấy duy nhất 1 record
+        .single(); 
 
     if (error || !data) {
         return res.status(401).json({ success: false, message: "Sai username hoặc password!" });
     }
 
-    // Format lại dữ liệu cho giống với code cũ của bạn
+    // 2. Dùng bcrypt để so sánh mật khẩu người dùng nhập với mã băm trong DB
+    const isMatch = await bcrypt.compare(password, data.password);
+    
+    if (!isMatch) {
+        return res.status(401).json({ success: false, message: "Sai username hoặc password!" });
+    }
+
+    // 3. Format lại dữ liệu và TUYỆT ĐỐI KHÔNG trả trường password về cho Frontend
     const userData = {
         userID: data.userID,
         username: data.username,
@@ -46,7 +55,7 @@ router.post('/signin', async (req, res) => {
   }
 });
 
-/* POST SIGN UP */
+/* POST SIGN UP (ĐĂNG KÝ) */
 router.post('/signup', async (req, res) => {
     try {
         const { username, password, email, fullName } = req.body;
@@ -64,16 +73,19 @@ router.post('/signup', async (req, res) => {
             return res.status(409).json({ success: false, message: "Username đã tồn tại!" });
         }
 
-        // 2. Insert User mới (Supabase trả về ID tự sinh)
+        // 2. Sinh chuỗi ngẫu nhiên (salt) và băm mật khẩu
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+        // 3. Insert User mới với mật khẩu ĐÃ BĂM (hashedPassword)
         const { data: newUser, error: insertError } = await supabase
             .from('User')
-            .insert([{ username, password, email, fullName, role: 'student' }])
+            .insert([{ username, password: hashedPassword, email, fullName, role: 'student' }])
             .select('userID')
             .single();
 
         if (insertError) throw insertError;
 
-        // 3. Insert ID đó vào bảng Student
+        // 4. Insert ID đó vào bảng Student
         const { error: studentError } = await supabase
             .from('Student')
             .insert([{ studentID: newUser.userID }]);
