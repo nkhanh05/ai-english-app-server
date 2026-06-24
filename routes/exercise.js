@@ -8,34 +8,54 @@ const supabase = require('../db');
 router.get('/revise/:userID', async (req, res) => {
     try {
         const { userID } = req.params;
-        const today = new Date().toISOString(); 
+        const today = new Date().toISOString().split('T')[0]; // Định dạng YYYY-MM-DD
 
-        // Lấy các từ có nextReview <= hôm nay HOẶC chưa từng ôn tập (nextReview is null)
-        const { data, error } = await supabase
+        // =========================================================
+        // BƯỚC 1: Lấy TẤT CẢ các từ đến hạn ĐÚNG HÔM NAY
+        // =========================================================
+        const { data: todayWords, error: todayErr } = await supabase
             .from('User_Word')
             .select('*, Word!inner(wordID, term, definition)')
             .eq('userID', userID)
-            .or(`nextReview.lte.${today},nextReview.is.null`);
+            .eq('nextReview', today);
 
-        if (error) throw error;
+        if (todayErr) throw todayErr;
 
-        // Trải phẳng dữ liệu để Flutter dễ parse
-        const formattedData = data.map(item => {
-            const { Word, ...rest } = item;
-            return { 
-                ...rest, 
-                id: Word.wordID, // Đổi tên cho khớp với model Word bên Flutter
-                term: Word.term, 
-                definition: Word.definition 
-            };
-        });
+        // Nếu hôm nay có từ cần ôn, trả về ngay lập tức (không quan tâm có bao nhiêu từ)
+        if (todayWords && todayWords.length > 0) {
+            return res.status(200).json(formatData(todayWords));
+        }
 
-        res.status(200).json(formattedData);
+        // =========================================================
+        // BƯỚC 2: Nếu không có từ nào hôm nay, lấy 20 từ gần nhất
+        // =========================================================
+        // Ưu tiên: Từ quá hạn (gần hôm nay nhất) -> Từ tương lai (gần hôm nay nhất)
+        const { data: fallbackWords, error: fallbackErr } = await supabase
+            .from('User_Word')
+            .select('*, Word!inner(wordID, term, definition)')
+            .eq('userID', userID)
+            .order('nextReview', { ascending: true, nullsFirst: false }) // Sắp xếp theo ngày
+            .limit(20);
+
+        if (fallbackErr) throw fallbackErr;
+
+        res.status(200).json(formatData(fallbackWords || []));
+
     } catch (err) {
         console.error("Lỗi lấy danh sách ôn tập:", err);
         res.status(500).json({ error: 'Internal Server Error' });
     }
 });
+
+// Hàm hỗ trợ để code gọn gàng
+function formatData(data) {
+    return data.map(item => ({
+        ...item,
+        id: item.Word.wordID,
+        term: item.Word.term,
+        definition: item.Word.definition
+    }));
+}
 
 // ====================================================================
 // 2. POST: LƯU KẾT QUẢ BÀI TẬP VÀ CẬP NHẬT CHỈ SỐ SM-2
