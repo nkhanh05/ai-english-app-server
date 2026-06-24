@@ -1,69 +1,58 @@
+// word.js
 var express = require('express');
 var router = express.Router();
-const { poolPromise, sql } = require('../db');
-
-// Helper kiểm tra kết nối Database
-const getPool = async () => {
-    const pool = await poolPromise;
-    if (!pool) throw new Error("Database connection failed");
-    return pool;
-};
-
-
-
+const supabase = require('../db');
 
 router.post('/addWord', async (req, res) => {
     try {
-        // Gom tất cả data cần thiết vào 1 cục từ Flutter gởi lên
         const { userID, term, definition, photoUrl } = req.body;
-        const pool = await poolPromise;
+        let currentWordID;
 
-        // Mã T-SQL thực thi toàn bộ logic: Kiểm tra -> Thêm Word -> Thêm User_Word
-        const query = `
-            DECLARE @CurrentWordID INT;
+        // Bước 1: Kiểm tra từ đã có trong bảng Word chưa
+        const { data: existingWord } = await supabase
+            .from('Word')
+            .select('wordID')
+            .eq('term', term)
+            .eq('definition', definition)
+            .single();
 
-            -- Bước 1: Tìm xem từ đã có trong bảng Word chưa
-            SELECT @CurrentWordID = wordID 
-            FROM Word 
-            WHERE term = @term AND definition = @definition;
+        if (existingWord) {
+            currentWordID = existingWord.wordID;
+        } else {
+            // Bước 2: Nếu chưa có, insert và lấy ID
+            const { data: newWord, error: wordError } = await supabase
+                .from('Word')
+                .insert([{ term, definition }])
+                .select('wordID')
+                .single();
 
-            -- Bước 2: Nếu chưa có (NULL), tiến hành chèn vào bảng Word
-            IF @CurrentWordID IS NULL
-            BEGIN
-                INSERT INTO Word (term, definition) 
-                VALUES (@term, @definition);
-                
-                -- Lấy ngay wordID của từ vừa chèn
-                SET @CurrentWordID = SCOPE_IDENTITY(); 
-            END
+            if (wordError) throw wordError;
+            currentWordID = newWord.wordID;
+        }
 
-            -- Bước 3: Lưu vào thư viện User_Word
-            -- Có thêm lệnh kiểm tra để tránh lưu trùng: Nếu user đã có từ này rồi thì thôi không lưu nữa
-            IF NOT EXISTS (SELECT 1 FROM User_Word WHERE userID = @userID AND wordID = @CurrentWordID)
-            BEGIN
-                INSERT INTO User_Word (userID, wordID, photoUrl) 
-                VALUES (@userID, @CurrentWordID, @photoUrl);
-            END
-        `;
+        // Bước 3: Kiểm tra user đã lưu từ này vào thư viện User_Word chưa
+        const { data: existingUserWord } = await supabase
+            .from('User_Word')
+            .select('*')
+            .eq('userID', userID)
+            .eq('wordID', currentWordID)
+            .single();
 
-        // Chỉ cần 1 lần kết nối CSDL duy nhất
-        await pool.request()
-            .input('userID', sql.Int, userID)
-            .input('term', sql.NVarChar(100), term)
-            .input('definition', sql.NVarChar(sql.MAX), definition)
-            .input('photoUrl', sql.NVarChar(sql.MAX), photoUrl)
-            .query(query);
+        // Bước 4: Nếu chưa lưu, tiến hành lưu
+        if (!existingUserWord) {
+            const { error: userWordError } = await supabase
+                .from('User_Word')
+                .insert([{ userID, wordID: currentWordID, photoUrl }]);
 
-        res.status(200).json({
-            success: true,
-            message: "Đã lưu từ vựng vào thư viện thành công!"
-        });
+            if (userWordError) throw userWordError;
+        }
+
+        res.status(200).json({ success: true, message: "Đã lưu từ vựng vào thư viện thành công!" });
 
     } catch (err) {
         console.error("Lỗi khi lưu từ:", err);
         res.status(500).json({ success: false, message: "Lỗi hệ thống: " + err.message });
     }
 });
-
 
 module.exports = router;

@@ -1,31 +1,18 @@
-const sql = require('mssql');
+// db.js
+const { createClient } = require('@supabase/supabase-js');
+require('dotenv').config();
 
-// Tách nhỏ chuỗi kết nối ra thành các thuộc tính cụ thể
-const dbConfig = {
-    user: 'nkhanh',
-    password: 'Nkh060905@',
-    server: 'nkhanh.database.windows.net', 
-    database: 'ai-english-app-db',
-    options: {
-        encrypt: true, // Bắt buộc cho Azure SQL
-        trustServerCertificate: false
-    },
-    connectionTimeout: 30000
-};
+// Lấy biến môi trường (Render sẽ tự động đọc các biến này khi deploy)
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SECRET_KEY; // Dùng Secret Key cho Backend
 
-// Khởi tạo và kết nối
-const poolPromise = new sql.ConnectionPool(dbConfig)
-    .connect()
-    .then(pool => {
-        console.log('✅ Đã kết nối Database thành công!');
-        return pool;
-    })
-    .catch(err => {
-        console.error('❌ LỖI KẾT NỐI DATABASE:', err);
-        throw err; // Ném lỗi để user.js biết mà xử lý
-    });
+if (!supabaseUrl || !supabaseKey) {
+    console.error("❌ Thiếu biến môi trường SUPABASE_URL hoặc SUPABASE_SECRET_KEY");
+    process.exit(1);
+}
 
-module.exports = {
-    sql,
-    poolPromise
-};
+// Khởi tạo Supabase Client
+const supabase = createClient(supabaseUrl, supabaseKey);
+console.log('✅ Đã kết nối Supabase Database thành công!');
+
+module.exports = supabase;

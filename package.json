@@ -6,13 +6,13 @@
     "start": "node ./bin/www"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.108.2",
     "cookie-parser": "~1.4.4",
     "debug": "~2.6.9",
     "dotenv": "^17.4.2",
     "ejs": "^6.0.1",
     "express": "^4.22.2",
     "http-errors": "~1.6.3",
-    "morgan": "^1.11.0",
-    "mssql": "^12.5.5"
+    "morgan": "^1.11.0"
   }
 }
