@@ -21,24 +21,43 @@ const formatUserData = (usersData) => {
 router.get('/friend/:userID', async function(req, res) {
     const userID = req.params.userID;
     try {
-        const { data: rels, error } = await supabase
+        // BƯỚC 1: Lấy danh sách ID những người mà userID ĐANG THEO DÕI
+        const { data: following, error: followingErr } = await supabase
             .from('Relationship')
-            .select('StudentID_1, StudentID_2')
-            .or(`StudentID_1.eq.${userID},StudentID_2.eq.${userID}`)
-            .eq('Status', 'accepted'); // Đã map theo script.sql của bạn
+            .select('StudentID_2')
+            .eq('StudentID_1', userID);
 
-        if (error) throw error;
+        if (followingErr) throw followingErr;
+
+        // BƯỚC 2: Lấy danh sách ID những người ĐANG THEO DÕI userID
+        const { data: followers, error: followersErr } = await supabase
+            .from('Relationship')
+            .select('StudentID_1')
+            .eq('StudentID_2', userID);
+
+        if (followersErr) throw followersErr;
+
+        // BƯỚC 3: Lọc ra những ID trùng nhau (Follow 2 chiều)
+        const followingIDs = following.map(r => r.StudentID_2);
+        const followerIDs = followers.map(r => r.StudentID_1);
         
-        const friendIDs = rels.map(r => r.StudentID_1 == userID ? r.StudentID_2 : r.StudentID_1);
+        // Trả về mảng chứa các ID có trong cả 2 danh sách
+        const friendIDs = followingIDs.filter(id => followerIDs.includes(id));
+
+        // Nếu không có ai follow 2 chiều thì trả về mảng rỗng
         if (friendIDs.length === 0) return res.status(200).json([]);
 
-        const { data: friends } = await supabase
+        // BƯỚC 4: Lấy thông tin chi tiết của những người bạn đó
+        const { data: friends, error: friendsErr } = await supabase
             .from('Student')
             .select('studentID, weeklyExp, totalExp, streak, isStreakmaintained, User!inner(fullName, avatarUrl, username)')
             .in('studentID', friendIDs);
 
+        if (friendsErr) throw friendsErr;
+
         res.status(200).json(formatUserData(friends));
     } catch (err) {
+        console.error("Lỗi lấy danh sách bạn bè 2 chiều:", err);
         res.status(500).json({ error: 'Internal Server Error' });
     }
 });
@@ -50,8 +69,7 @@ router.get('/follower/:userID', async function(req, res) {
         const { data: rels } = await supabase
             .from('Relationship')
             .select('StudentID_1')
-            .eq('StudentID_2', userID)
-            .eq('Status', 'Follow');
+            .eq('StudentID_2', userID);
 
         const followerIDs = rels?.map(r => r.StudentID_1) || [];
         if (followerIDs.length === 0) return res.status(200).json([]);
@@ -74,8 +92,7 @@ router.get('/following/:userID', async function(req, res) {
         const { data: rels } = await supabase
             .from('Relationship')
             .select('StudentID_2')
-            .eq('StudentID_1', userID)
-            .eq('Status', 'Follow');
+            .eq('StudentID_1', userID);
 
         const followingIDs = rels?.map(r => r.StudentID_2) || [];
         if (followingIDs.length === 0) return res.status(200).json([]);
