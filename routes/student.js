@@ -3,8 +3,6 @@ var express = require('express');
 var router = express.Router();
 const supabase = require('../db');
 
-
-
 router.post('/check/word/', async (req, res) => {
     try {
         const { term, definition } = req.body;
@@ -90,14 +88,14 @@ router.post('/select/people', async (req, res) => {
 });
 
 // ====================================================================
-// 1. GET: LẤY GLOBAL RANKING (Sửa lại từ POST thành GET cho chuẩn)
+// 1. GET: LẤY GLOBAL RANKING
 // ====================================================================
 router.get('/allPeople', async (req, res) => {
     try {
         const { data, error } = await supabase
             .from('Student')
             .select('studentID, totalExp, weeklyExp, streak, isStreakmaintained, User!inner(username, fullName, avatarUrl)')
-            .order('totalExp', { ascending: false }); // Xếp hạng theo EXP giảm dần
+            .order('totalExp', { ascending: false });
 
         if (error) throw error;
 
@@ -112,9 +110,50 @@ router.get('/allPeople', async (req, res) => {
             isStreakmaintained: item.isStreakmaintained
         }));
 
-        res.status(200).json(formattedData); // Trả thẳng mảng [] theo như StudentService.dart
+        res.status(200).json(formattedData); 
     } catch (err) {
         res.status(500).json({ success: false, message: "Lỗi server" });
+    }
+});
+
+// ====================================================================
+// 4. GET: TÌM KIẾM THEO USERNAME
+// ====================================================================
+router.get('/search', async (req, res) => {
+    try {
+        const { username } = req.query;
+        if (!username) {
+            return res.status(400).json({ success: false, message: 'Vui lòng nhập username' });
+        }
+  
+        const { data, error } = await supabase
+            .from('User')
+            .select(`
+                userID, username, fullName, role, avatarUrl,
+                Student (weeklyExp, totalExp, streak)
+            `)
+            .eq('username', username)
+            .single(); 
+  
+        if (error || !data) {
+            return res.status(404).json({ success: false, message: 'Không tìm được người dùng' });
+        }
+  
+        const userData = {
+            userID: data.userID,
+            username: data.username,
+            fullName: data.fullName,
+            avatarUrl: data.avatarUrl,
+            weeklyExp: data.Student?.[0]?.weeklyExp || 0,
+            totalExp: data.Student?.[0]?.totalExp || 0,
+            streak: data.Student?.[0]?.streak || 0
+        };
+  
+        res.json({ success: true, user: userData });
+  
+    } catch (error) {
+        console.error("Lỗi API Tìm kiếm:", error);
+        res.status(500).json({ success: false, message: 'Lỗi hệ thống' });
     }
 });
 
@@ -172,45 +211,6 @@ router.put('/update/:studentId', async (req, res) => {
     }
 });
 
-router.get('/search', async (req, res) => {
-  try {
-      const { username } = req.query;
-      if (!username) {
-          return res.status(400).json({ success: false, message: 'Vui lòng nhập username' });
-      }
 
-      // Tìm user theo username
-      const { data, error } = await supabase
-          .from('User')
-          .select(`
-              userID, username, fullName, role, avatarUrl,
-              Student (weeklyExp, totalExp, streak)
-          `)
-          .eq('username', username)
-          .single(); // Chỉ lấy 1 kết quả chính xác
-
-      if (error || !data) {
-          return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng này' });
-      }
-
-      // Format dữ liệu trả về
-      const userData = {
-          userID: data.userID,
-          username: data.username,
-          fullName: data.fullName,
-          role: data.role,
-          avatarUrl: data.avatarUrl,
-          weeklyExp: data.Student?.[0]?.weeklyExp || 0,
-          totalExp: data.Student?.[0]?.totalExp || 0,
-          streak: data.Student?.[0]?.streak || 0
-      };
-
-      res.json({ success: true, user: userData });
-
-  } catch (error) {
-      console.error("Lỗi API Tìm kiếm:", error);
-      res.status(500).json({ success: false, message: 'Lỗi hệ thống' });
-  }
-});
 
 module.exports = router;
