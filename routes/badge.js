@@ -120,14 +120,16 @@ router.delete('/admin/delete/:badgeId', async (req, res) => {
 // ==========================================
 
 // Lấy danh sách huy hiệu ĐÃ SỞ HỮU
+// Lấy danh sách huy hiệu ĐÃ SỞ HỮU
 router.get('/student/:studentId/owned', async (req, res) => {
-    const { studentId } = req.params;
+    // ÉP KIỂU SANG SỐ NGUYÊN
+    const studentId = parseInt(req.params.studentId, 10); 
     try {
-        // Cú pháp Nested Select cực mạnh của Supabase
         const { data, error } = await supabase
             .from('Student_Badge')
+            // GHI TRỰC TIẾP TÊN BẢNG, KHÔNG DÙNG ALIAS
             .select(`
-                Badge:badgeID (
+                Badge (
                     badgeID,
                     badgeName,
                     description,
@@ -140,9 +142,6 @@ router.get('/student/:studentId/owned', async (req, res) => {
             .eq('studentID', studentId);
 
         if (error) throw error;
-
-        // Data trả về auto khớp chuẩn form: { "Badge": { "badgeName": "...", "ExpBadge": [...] } }
-        // Hoàn hảo cho hàm `Badge.fromJson` của Flutter
         res.status(200).json(data);
     } catch (error) {
         console.error("Lỗi lấy huy hiệu:", error);
@@ -152,10 +151,8 @@ router.get('/student/:studentId/owned', async (req, res) => {
 
 // Lấy danh sách huy hiệu CHƯA SỞ HỮU
 router.get('/student/:studentId/unowned', async (req, res) => {
-    const { studentId } = req.params;
+    const studentId = parseInt(req.params.studentId, 10);
     try {
-        // Supabase JS khó hỗ trợ lệnh "NOT IN" trực tiếp từ 2 bảng liên kết. 
-        // Thay vào đó ta lấy tất cả Badge và list ID đã sở hữu, rồi filter bằng JS.
         const [allBadgesRes, ownedRes] = await Promise.all([
             supabase.from('Badge').select(`*, ExpBadge (ExpRequire), FriendBadge (friendRequire), StreakBadge (streakCount)`),
             supabase.from('Student_Badge').select('badgeID').eq('studentID', studentId)
@@ -165,11 +162,8 @@ router.get('/student/:studentId/unowned', async (req, res) => {
         if (ownedRes.error) throw ownedRes.error;
 
         const ownedIds = ownedRes.data.map(item => item.badgeID);
-        
-        // Lọc ra các Badge mà người dùng CHƯA có
         const unownedBadges = allBadgesRes.data.filter(badge => !ownedIds.includes(badge.badgeID));
 
-        // Trả ra dạng mảng các object phẳng, khớp với logic Flutter unowned
         res.status(200).json(unownedBadges);
     } catch (error) {
         console.error("Lỗi lấy huy hiệu chưa có:", error);

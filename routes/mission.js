@@ -32,15 +32,18 @@ router.get('/admin/select', async (req, res) => {
 // ==========================================
 
 // Lấy nhiệm vụ của học sinh kèm theo tiến độ
+// Lấy nhiệm vụ của học sinh kèm theo tiến độ
 router.get('/student/:studentID', async (req, res) => {
-    const { studentID } = req.params;
+    // ÉP KIỂU SANG SỐ NGUYÊN
+    const studentID = parseInt(req.params.studentID, 10);
     try {
         const { data, error } = await supabase
             .from('Student_Mission')
+            // GHI TRỰC TIẾP TÊN BẢNG
             .select(`
                 status,
                 progress,
-                Mission:missionID (
+                Mission (
                     *,
                     FriendMission (friendRequire),
                     WordMission (wordRequire)
@@ -49,20 +52,6 @@ router.get('/student/:studentID', async (req, res) => {
             .eq('studentID', studentID);
 
         if (error) throw error;
-
-        // Data trả về sẽ có format:
-        // [
-        //   {
-        //     "status": "unfinished",
-        //     "progress": 0,
-        //     "Mission": {
-        //         "missionName": "...",
-        //         "FriendMission": [...],
-        //         "WordMission": []
-        //     }
-        //   }
-        // ]
-        // Định dạng này KHỚP HOÀN TOÀN VỚI Class `StudentMissionDetail.fromJson` bên Flutter của bạn!
         res.status(200).json(data);
     } catch (error) {
         console.error("Lỗi lấy danh sách nhiệm vụ (Student):", error);
