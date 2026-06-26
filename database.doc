@@ -1,0 +1,144 @@
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
+
+CREATE TABLE public.User (
+  userID integer NOT NULL DEFAULT nextval('"User_userID_seq"'::regclass),
+  username character varying NOT NULL UNIQUE,
+  password character varying NOT NULL,
+  email character varying,
+  fullName character varying,
+  role character varying,
+  createdAt timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  avatarUrl text,
+  status character varying,
+  CONSTRAINT User_pkey PRIMARY KEY (userID)
+);
+CREATE TABLE public.Admin (
+  AdminID integer NOT NULL,
+  CONSTRAINT Admin_pkey PRIMARY KEY (AdminID),
+  CONSTRAINT Admin_AdminID_fkey FOREIGN KEY (AdminID) REFERENCES public.User(userID)
+);
+CREATE TABLE public.Student (
+  studentID integer NOT NULL,
+  weeklyExp integer DEFAULT 0,
+  totalExp integer DEFAULT 0,
+  streak integer DEFAULT 0,
+  isStreakmaintained boolean DEFAULT false,
+  CONSTRAINT Student_pkey PRIMARY KEY (studentID),
+  CONSTRAINT Student_studentID_fkey FOREIGN KEY (studentID) REFERENCES public.User(userID)
+);
+CREATE TABLE public.Word (
+  wordID integer NOT NULL DEFAULT nextval('"Word_wordID_seq"'::regclass),
+  term character varying NOT NULL UNIQUE,
+  definition text,
+  CONSTRAINT Word_pkey PRIMARY KEY (wordID)
+);
+CREATE TABLE public.User_Word (
+  userID integer NOT NULL,
+  wordID integer NOT NULL,
+  ef double precision DEFAULT 2.5,
+  nextReview date,
+  lastReview date,
+  reviewInterval integer DEFAULT 1,
+  photoUrl text,
+  createdAt timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  numberCorrect integer,
+  CONSTRAINT User_Word_pkey PRIMARY KEY (userID, wordID),
+  CONSTRAINT User_Word_userID_fkey FOREIGN KEY (userID) REFERENCES public.User(userID),
+  CONSTRAINT User_Word_wordID_fkey FOREIGN KEY (wordID) REFERENCES public.Word(wordID)
+);
+CREATE TABLE public.ExerciseAttempt (
+  attemptID integer NOT NULL DEFAULT nextval('"ExerciseAttempt_attemptID_seq"'::regclass),
+  userID integer NOT NULL,
+  exerciseType character varying,
+  startTime timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  totalCorrect integer DEFAULT 0,
+  totalIncorrect integer DEFAULT 0,
+  CONSTRAINT ExerciseAttempt_pkey PRIMARY KEY (attemptID),
+  CONSTRAINT ExerciseAttempt_userID_fkey FOREIGN KEY (userID) REFERENCES public.User(userID)
+);
+CREATE TABLE public.ExerciseDetail (
+  attemptID integer NOT NULL,
+  userID integer NOT NULL,
+  wordID integer NOT NULL,
+  status character varying NOT NULL CHECK (status::text = ANY (ARRAY['false'::character varying, 'true'::character varying]::text[])),
+  CONSTRAINT ExerciseDetail_pkey PRIMARY KEY (attemptID, userID, wordID),
+  CONSTRAINT ExerciseDetail_attemptID_fkey FOREIGN KEY (attemptID) REFERENCES public.ExerciseAttempt(attemptID),
+  CONSTRAINT ExerciseDetail_userID_wordID_fkey FOREIGN KEY (userID) REFERENCES public.User_Word(userID),
+  CONSTRAINT ExerciseDetail_userID_wordID_fkey FOREIGN KEY (wordID) REFERENCES public.User_Word(wordID)
+);
+CREATE TABLE public.Badge (
+  badgeID integer NOT NULL DEFAULT nextval('"Badge_badgeID_seq"'::regclass),
+  badgeName character varying,
+  description text,
+  type character varying,
+  AdminID integer,
+  CONSTRAINT Badge_pkey PRIMARY KEY (badgeID),
+  CONSTRAINT Badge_AdminID_fkey FOREIGN KEY (AdminID) REFERENCES public.Admin(AdminID)
+);
+CREATE TABLE public.ExpBadge (
+  badgeID integer NOT NULL,
+  ExpRequire integer,
+  CONSTRAINT ExpBadge_pkey PRIMARY KEY (badgeID),
+  CONSTRAINT ExpBadge_badgeID_fkey FOREIGN KEY (badgeID) REFERENCES public.Badge(badgeID)
+);
+CREATE TABLE public.FriendBadge (
+  badgeID integer NOT NULL,
+  friendRequire integer,
+  CONSTRAINT FriendBadge_pkey PRIMARY KEY (badgeID),
+  CONSTRAINT FriendBadge_badgeID_fkey FOREIGN KEY (badgeID) REFERENCES public.Badge(badgeID)
+);
+CREATE TABLE public.StreakBadge (
+  badgeID integer NOT NULL,
+  streakCount integer,
+  CONSTRAINT StreakBadge_pkey PRIMARY KEY (badgeID),
+  CONSTRAINT StreakBadge_badgeID_fkey FOREIGN KEY (badgeID) REFERENCES public.Badge(badgeID)
+);
+CREATE TABLE public.Mission (
+  missionID integer NOT NULL DEFAULT nextval('"Mission_missionID_seq"'::regclass),
+  missionName character varying,
+  description text,
+  type character varying,
+  AdminID integer,
+  startAt date,
+  endAt date,
+  CONSTRAINT Mission_pkey PRIMARY KEY (missionID),
+  CONSTRAINT Mission_AdminID_fkey FOREIGN KEY (AdminID) REFERENCES public.Admin(AdminID)
+);
+CREATE TABLE public.FriendMission (
+  missionID integer NOT NULL,
+  friendRequire integer,
+  CONSTRAINT FriendMission_pkey PRIMARY KEY (missionID),
+  CONSTRAINT FriendMission_missionID_fkey FOREIGN KEY (missionID) REFERENCES public.Mission(missionID)
+);
+CREATE TABLE public.WordMission (
+  missionID integer NOT NULL,
+  wordRequire integer,
+  CONSTRAINT WordMission_pkey PRIMARY KEY (missionID),
+  CONSTRAINT WordMission_missionID_fkey FOREIGN KEY (missionID) REFERENCES public.Mission(missionID)
+);
+CREATE TABLE public.Relationship (
+  StudentID_1 integer NOT NULL,
+  StudentID_2 integer NOT NULL,
+  Status character varying,
+  startAt timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT Relationship_pkey PRIMARY KEY (StudentID_1, StudentID_2),
+  CONSTRAINT Relationship_StudentID_1_fkey FOREIGN KEY (StudentID_1) REFERENCES public.Student(studentID),
+  CONSTRAINT Relationship_StudentID_2_fkey FOREIGN KEY (StudentID_2) REFERENCES public.Student(studentID)
+);
+CREATE TABLE public.Student_Badge (
+  studentID integer NOT NULL,
+  badgeID integer NOT NULL,
+  CONSTRAINT Student_Badge_pkey PRIMARY KEY (studentID, badgeID),
+  CONSTRAINT Student_Badge_studentID_fkey FOREIGN KEY (studentID) REFERENCES public.Student(studentID),
+  CONSTRAINT Student_Badge_badgeID_fkey FOREIGN KEY (badgeID) REFERENCES public.Badge(badgeID)
+);
+CREATE TABLE public.Student_Mission (
+  studentID integer NOT NULL,
+  missionID integer NOT NULL,
+  status character varying DEFAULT 'unfinished'::character varying CHECK (status::text = ANY (ARRAY['unfinished'::character varying, 'finished'::character varying]::text[])),
+  progress bigint NOT NULL DEFAULT '0'::bigint,
+  CONSTRAINT Student_Mission_pkey PRIMARY KEY (studentID, missionID),
+  CONSTRAINT Student_Mission_studentID_fkey FOREIGN KEY (studentID) REFERENCES public.Student(studentID),
+  CONSTRAINT Student_Mission_missionID_fkey FOREIGN KEY (missionID) REFERENCES public.Mission(missionID)
+);
