@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../db'); // File config kết nối PostgreSQL của bạn (Pool)
+const supabase = require('../db'); // Trỏ đến file config Supabase JS của bạn
 
 // ==========================================
 // 1. DÀNH CHO ADMIN
@@ -9,36 +9,43 @@ const db = require('../db'); // File config kết nối PostgreSQL của bạn (
 // Thêm huy hiệu mới
 router.post('/admin/add', async (req, res) => {
     const { badgeName, description, type, adminID, expRequire, friendRequire, streakCount } = req.body;
-    const client = await db.connect();
+    let newBadgeID = null;
 
     try {
-        await client.query('BEGIN');
+        // 1. Insert vào bảng cha (Badge) và lấy badgeID về
+        const { data: badgeData, error: badgeErr } = await supabase
+            .from('Badge')
+            // Bỏ 'category' vì trong database.doc của bạn chỉ có 'type'
+            .insert([{ badgeName, description, type, AdminID: adminID }])
+            .select('badgeID')
+            .single();
 
-        // 1. Insert vào bảng cha (Badge)
-        const insertBadgeQuery = `
-            INSERT INTO public."Badge" ("badgeName", "description", "type", "AdminID") 
-            VALUES ($1, $2, $3, $4) RETURNING "badgeID"
-        `;
-        const badgeResult = await client.query(insertBadgeQuery, [badgeName, description, type, adminID]);
-        const badgeID = badgeResult.rows[0].badgeID;
+        if (badgeErr) throw badgeErr;
+        newBadgeID = badgeData.badgeID;
 
-        // 2. Insert vào bảng con tương ứng dựa trên 'type'
+        // 2. Insert vào bảng con tương ứng
+        let childErr = null;
         if (type === 'Exp') {
-            await client.query('INSERT INTO public."ExpBadge" ("badgeID", "ExpRequire") VALUES ($1, $2)', [badgeID, expRequire]);
+            const { error } = await supabase.from('ExpBadge').insert([{ badgeID: newBadgeID, ExpRequire: expRequire }]);
+            childErr = error;
         } else if (type === 'Friend') {
-            await client.query('INSERT INTO public."FriendBadge" ("badgeID", "friendRequire") VALUES ($1, $2)', [badgeID, friendRequire]);
+            const { error } = await supabase.from('FriendBadge').insert([{ badgeID: newBadgeID, friendRequire: friendRequire }]);
+            childErr = error;
         } else if (type === 'Streak') {
-            await client.query('INSERT INTO public."StreakBadge" ("badgeID", "streakCount") VALUES ($1, $2)', [badgeID, streakCount]);
+            const { error } = await supabase.from('StreakBadge').insert([{ badgeID: newBadgeID, streakCount: streakCount }]);
+            childErr = error;
         }
 
-        await client.query('COMMIT');
+        if (childErr) throw childErr;
+
         res.status(201).json({ message: "Thêm huy hiệu thành công" });
     } catch (error) {
-        await client.query('ROLLBACK');
+        // Kỹ thuật Manual Rollback: Nếu lỗi tạo bảng con, tự động xóa bảng cha đi
+        if (newBadgeID) {
+            await supabase.from('Badge').delete().eq('badgeID', newBadgeID);
+        }
         console.error("Lỗi thêm huy hiệu:", error);
         res.status(500).json({ error: "Lỗi server" });
-    } finally {
-        client.release();
     }
 });
 
@@ -46,68 +53,65 @@ router.post('/admin/add', async (req, res) => {
 router.put('/admin/update/:badgeId', async (req, res) => {
     const badgeId = req.params.badgeId;
     const { badgeName, description, type, expRequire, friendRequire, streakCount } = req.body;
-    const client = await db.connect();
 
     try {
-        await client.query('BEGIN');
+        // 1. Cập nhật bảng cha
+        const { error: updateErr } = await supabase
+            .from('Badge')
+            .update({ badgeName, description, type })
+            .eq('badgeID', badgeId);
 
-        // Cập nhật bảng cha
-        await client.query(`
-            UPDATE public."Badge" 
-            SET "badgeName" = $1, "description" = $2, "type" = $3 
-            WHERE "badgeID" = $4
-        `, [badgeName, description, type, badgeId]);
+        if (updateErr) throw updateErr;
 
-        // Xóa thông tin ở bảng con cũ (đề phòng đổi type)
-        await client.query('DELETE FROM public."ExpBadge" WHERE "badgeID" = $1', [badgeId]);
-        await client.query('DELETE FROM public."FriendBadge" WHERE "badgeID" = $1', [badgeId]);
-        await client.query('DELETE FROM public."StreakBadge" WHERE "badgeID" = $1', [badgeId]);
+        // 2. Xóa các record ở bảng con cũ (Tránh trường hợp bị rác khi Update đổi type)
+        await Promise.all([
+            supabase.from('ExpBadge').delete().eq('badgeID', badgeId),
+            supabase.from('FriendBadge').delete().eq('badgeID', badgeId),
+            supabase.from('StreakBadge').delete().eq('badgeID', badgeId),
+        ]);
 
-        // Insert lại vào bảng con mới
+        // 3. Tạo record bảng con mới
         if (type === 'Exp') {
-            await client.query('INSERT INTO public."ExpBadge" ("badgeID", "ExpRequire") VALUES ($1, $2)', [badgeId, expRequire]);
+            await supabase.from('ExpBadge').insert([{ badgeID: badgeId, ExpRequire: expRequire }]);
         } else if (type === 'Friend') {
-            await client.query('INSERT INTO public."FriendBadge" ("badgeID", "friendRequire") VALUES ($1, $2)', [badgeId, friendRequire]);
+            await supabase.from('FriendBadge').insert([{ badgeID: badgeId, friendRequire: friendRequire }]);
         } else if (type === 'Streak') {
-            await client.query('INSERT INTO public."StreakBadge" ("badgeID", "streakCount") VALUES ($1, $2)', [badgeId, streakCount]);
+            await supabase.from('StreakBadge').insert([{ badgeID: badgeId, streakCount: streakCount }]);
         }
 
-        await client.query('COMMIT');
         res.status(200).json({ message: "Cập nhật thành công" });
     } catch (error) {
-        await client.query('ROLLBACK');
         console.error("Lỗi cập nhật huy hiệu:", error);
         res.status(500).json({ error: "Lỗi server" });
-    } finally {
-        client.release();
     }
 });
 
 // Xóa huy hiệu
 router.delete('/admin/delete/:badgeId', async (req, res) => {
     const badgeId = req.params.badgeId;
-    const client = await db.connect();
 
     try {
-        await client.query('BEGIN');
+        // Xóa bảng con & liên kết trước
+        await Promise.all([
+            supabase.from('Student_Badge').delete().eq('badgeID', badgeId),
+            supabase.from('ExpBadge').delete().eq('badgeID', badgeId),
+            supabase.from('FriendBadge').delete().eq('badgeID', badgeId),
+            supabase.from('StreakBadge').delete().eq('badgeID', badgeId),
+        ]);
 
-        // Phải xóa khóa ngoại ở các bảng con và bảng liên kết trước
-        await client.query('DELETE FROM public."Student_Badge" WHERE "badgeID" = $1', [badgeId]);
-        await client.query('DELETE FROM public."ExpBadge" WHERE "badgeID" = $1', [badgeId]);
-        await client.query('DELETE FROM public."FriendBadge" WHERE "badgeID" = $1', [badgeId]);
-        await client.query('DELETE FROM public."StreakBadge" WHERE "badgeID" = $1', [badgeId]);
-        
         // Cuối cùng xóa bảng cha
-        await client.query('DELETE FROM public."Badge" WHERE "badgeID" = $1', [badgeId]);
+        const { error: deleteErr } = await supabase
+            .from('Badge')
+            .delete()
+            .eq('badgeID', badgeId);
 
-        await client.query('COMMIT');
+        if (deleteErr) throw deleteErr;
+
+        // HTTP 204 No Content là chuẩn nhất cho Delete hoặc 200 tùy bạn
         res.status(200).json({ message: "Xóa thành công" });
     } catch (error) {
-        await client.query('ROLLBACK');
         console.error("Lỗi xóa huy hiệu:", error);
         res.status(500).json({ error: "Lỗi server" });
-    } finally {
-        client.release();
     }
 });
 
@@ -115,83 +119,60 @@ router.delete('/admin/delete/:badgeId', async (req, res) => {
 // 2. DÀNH CHO STUDENT
 // ==========================================
 
-// Lấy danh sách huy hiệu ĐÃ SỞ HỮU (Dựa theo logic parse của Flutter: item['Badge'])
+// Lấy danh sách huy hiệu ĐÃ SỞ HỮU
 router.get('/student/:studentId/owned', async (req, res) => {
-    const studentId = req.params.studentId;
+    const { studentId } = req.params;
     try {
-        const query = `
-            SELECT b.*, 
-                   eb."ExpRequire", 
-                   fb."friendRequire", 
-                   sb."streakCount"
-            FROM public."Badge" b
-            INNER JOIN public."Student_Badge" stb ON b."badgeID" = stb."badgeID"
-            LEFT JOIN public."ExpBadge" eb ON b."badgeID" = eb."badgeID"
-            LEFT JOIN public."FriendBadge" fb ON b."badgeID" = fb."badgeID"
-            LEFT JOIN public."StreakBadge" sb ON b."badgeID" = sb."badgeID"
-            WHERE stb."studentID" = $1
-        `;
-        const result = await db.query(query, [studentId]);
-        
-        // Format lại JSON khớp với Badge.fromJson bên Flutter
-        const formattedData = result.rows.map(row => {
-            let badgeObj = {
-                badgeName: row.badgeName,
-                description: row.description,
-                type: row.type,
-            };
+        // Cú pháp Nested Select cực mạnh của Supabase
+        const { data, error } = await supabase
+            .from('Student_Badge')
+            .select(`
+                Badge:badgeID (
+                    badgeID,
+                    badgeName,
+                    description,
+                    type,
+                    ExpBadge (ExpRequire),
+                    FriendBadge (friendRequire),
+                    StreakBadge (streakCount)
+                )
+            `)
+            .eq('studentID', studentId);
 
-            if (row.type === 'Exp') badgeObj.ExpBadge = [{ ExpRequire: row.ExpRequire }];
-            if (row.type === 'Friend') badgeObj.FriendBadge = [{ friendRequire: row.friendRequire }];
-            if (row.type === 'Streak') badgeObj.StreakBadge = [{ streakCount: row.streakCount }];
+        if (error) throw error;
 
-            return { Badge: badgeObj };
-        });
-
-        res.status(200).json(formattedData);
+        // Data trả về auto khớp chuẩn form: { "Badge": { "badgeName": "...", "ExpBadge": [...] } }
+        // Hoàn hảo cho hàm `Badge.fromJson` của Flutter
+        res.status(200).json(data);
     } catch (error) {
-        console.error(error);
+        console.error("Lỗi lấy huy hiệu:", error);
         res.status(500).json({ error: "Lỗi server" });
     }
 });
 
 // Lấy danh sách huy hiệu CHƯA SỞ HỮU
 router.get('/student/:studentId/unowned', async (req, res) => {
-    const studentId = req.params.studentId;
+    const { studentId } = req.params;
     try {
-        const query = `
-            SELECT b.*, 
-                   eb."ExpRequire", 
-                   fb."friendRequire", 
-                   sb."streakCount"
-            FROM public."Badge" b
-            LEFT JOIN public."ExpBadge" eb ON b."badgeID" = eb."badgeID"
-            LEFT JOIN public."FriendBadge" fb ON b."badgeID" = fb."badgeID"
-            LEFT JOIN public."StreakBadge" sb ON b."badgeID" = sb."badgeID"
-            WHERE b."badgeID" NOT IN (
-                SELECT "badgeID" FROM public."Student_Badge" WHERE "studentID" = $1
-            )
-        `;
-        const result = await db.query(query, [studentId]);
+        // Supabase JS khó hỗ trợ lệnh "NOT IN" trực tiếp từ 2 bảng liên kết. 
+        // Thay vào đó ta lấy tất cả Badge và list ID đã sở hữu, rồi filter bằng JS.
+        const [allBadgesRes, ownedRes] = await Promise.all([
+            supabase.from('Badge').select(`*, ExpBadge (ExpRequire), FriendBadge (friendRequire), StreakBadge (streakCount)`),
+            supabase.from('Student_Badge').select('badgeID').eq('studentID', studentId)
+        ]);
 
-        // Format lại dữ liệu phẳng theo yêu cầu bên Flutter unowned
-        const formattedData = result.rows.map(row => {
-            let badgeObj = {
-                badgeName: row.badgeName,
-                description: row.description,
-                type: row.type,
-            };
+        if (allBadgesRes.error) throw allBadgesRes.error;
+        if (ownedRes.error) throw ownedRes.error;
 
-            if (row.type === 'Exp') badgeObj.ExpBadge = [{ ExpRequire: row.ExpRequire }];
-            if (row.type === 'Friend') badgeObj.FriendBadge = [{ friendRequire: row.friendRequire }];
-            if (row.type === 'Streak') badgeObj.StreakBadge = [{ streakCount: row.streakCount }];
+        const ownedIds = ownedRes.data.map(item => item.badgeID);
+        
+        // Lọc ra các Badge mà người dùng CHƯA có
+        const unownedBadges = allBadgesRes.data.filter(badge => !ownedIds.includes(badge.badgeID));
 
-            return badgeObj;
-        });
-
-        res.status(200).json(formattedData);
+        // Trả ra dạng mảng các object phẳng, khớp với logic Flutter unowned
+        res.status(200).json(unownedBadges);
     } catch (error) {
-        console.error(error);
+        console.error("Lỗi lấy huy hiệu chưa có:", error);
         res.status(500).json({ error: "Lỗi server" });
     }
 });
