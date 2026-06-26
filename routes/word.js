@@ -3,23 +3,27 @@ var express = require('express');
 var router = express.Router();
 const supabase = require('../db');
 
+// ==========================================
+// API THÊM TỪ MỚI
+// ==========================================
 router.post('/addWord', async (req, res) => {
     try {
         const { userID, term, definition, photoUrl } = req.body;
         let currentWordID;
 
-        // Bước 1: Kiểm tra từ đã có trong bảng Word chưa
+        // 1. CHỈ check 'term' vì cột này là UNIQUE
         const { data: existingWord } = await supabase
             .from('Word')
             .select('wordID')
             .eq('term', term)
-            .eq('definition', definition)
             .single();
 
         if (existingWord) {
             currentWordID = existingWord.wordID;
+            // Nếu từ đã có, ta update lại nghĩa mới nhất phòng trường hợp user muốn đổi nghĩa
+            await supabase.from('Word').update({ definition: definition }).eq('wordID', currentWordID);
         } else {
-            // Bước 2: Nếu chưa có, insert và lấy ID
+            // Nếu chưa có thì Insert
             const { data: newWord, error: wordError } = await supabase
                 .from('Word')
                 .insert([{ term, definition }])
@@ -30,7 +34,7 @@ router.post('/addWord', async (req, res) => {
             currentWordID = newWord.wordID;
         }
 
-        // Bước 3: Kiểm tra user đã lưu từ này vào thư viện User_Word chưa
+        // 2. Lưu vào thư viện User_Word (Check xem có chưa để tránh lỗi)
         const { data: existingUserWord } = await supabase
             .from('User_Word')
             .select('*')
@@ -38,7 +42,6 @@ router.post('/addWord', async (req, res) => {
             .eq('wordID', currentWordID)
             .single();
 
-        // Bước 4: Nếu chưa lưu, tiến hành lưu
         if (!existingUserWord) {
             const { error: userWordError } = await supabase
                 .from('User_Word')
@@ -55,6 +58,60 @@ router.post('/addWord', async (req, res) => {
     }
 });
 
+// ==========================================
+// API CẬP NHẬT TỪ (Xóa cũ - Thêm mới)
+// ==========================================
+router.put('/updateWord', async (req, res) => {
+    try {
+        const { userID, oldWordID, newTerm, newDefinition, newPhotoUrl } = req.body;
+
+        if (!newTerm || !newDefinition) {
+            return res.status(400).json({ success: false, message: "Chưa nhập đủ thông tin từ vựng" });
+        }
+
+        // 1. Xóa liên kết cũ trong User_Word
+        await supabase
+            .from('User_Word')
+            .delete()
+            .eq('userID', userID)
+            .eq('wordID', oldWordID);
+
+        // 2. CHỈ kiểm tra 'term' mới trong bảng Word
+        let currentWordID;
+        const { data: existingWord } = await supabase
+            .from('Word')
+            .select('wordID')
+            .eq('term', newTerm)
+            .single();
+
+        if (existingWord) {
+            currentWordID = existingWord.wordID;
+            // Update lại định nghĩa mới vào bảng Word chung
+            await supabase.from('Word').update({ definition: newDefinition }).eq('wordID', currentWordID);
+        } else {
+            // Nếu là một từ hoàn toàn mới, tạo mới trong bảng Word
+            const { data: newWord, error: wordError } = await supabase
+                .from('Word')
+                .insert([{ term: newTerm, definition: newDefinition }])
+                .select('wordID')
+                .single();
+            if (wordError) throw wordError;
+            currentWordID = newWord.wordID;
+        }
+
+        // 3. Liên kết từ mới vào User_Word cho user
+        const { error: linkError } = await supabase
+            .from('User_Word')
+            .insert([{ userID, wordID: currentWordID, photoUrl: newPhotoUrl }]);
+            
+        if (linkError) throw linkError;
+
+        res.status(200).json({ success: true, message: "Cập nhật từ thành công!" });
+    } catch (err) {
+        console.error("Lỗi cập nhật từ:", err);
+        res.status(500).json({ success: false, message: "Lỗi hệ thống: " + err.message });
+    }
+});
 // (Thêm vào routes/word.js)
 
 router.get('/:userID', async (req, res) => {
@@ -122,56 +179,6 @@ router.delete('/deleteWord', async (req, res) => {
 // ==========================================
 // API CẬP NHẬT TỪ (Xóa cũ - Thêm mới)
 // ==========================================
-router.put('/updateWord', async (req, res) => {
-    try {
-        const { userID, oldWordID, newTerm, newDefinition, newPhotoUrl } = req.body;
-
-        if (!newTerm || !newDefinition) {
-            return res.status(400).json({ success: false, message: "Chưa nhập đủ thông tin từ vựng" });
-        }
-
-        // 1. Xóa liên kết cũ trong User_Word
-        await supabase
-            .from('User_Word')
-            .delete()
-            .eq('userID', userID)
-            .eq('wordID', oldWordID);
-
-        // 2. Kiểm tra xem từ mới này đã tồn tại trong từ điển chung (Word) chưa
-        let currentWordID;
-        const { data: existingWord } = await supabase
-            .from('Word')
-            .select('wordID')
-            .eq('term', newTerm)
-            .eq('definition', newDefinition)
-            .single();
-
-        if (existingWord) {
-            currentWordID = existingWord.wordID;
-        } else {
-            // Nếu chưa có, tạo từ mới trong bảng Word
-            const { data: newWord, error: wordError } = await supabase
-                .from('Word')
-                .insert([{ term: newTerm, definition: newDefinition }])
-                .select('wordID')
-                .single();
-            if (wordError) throw wordError;
-            currentWordID = newWord.wordID;
-        }
-
-        // 3. Liên kết từ mới vào User_Word cho user
-        const { error: linkError } = await supabase
-            .from('User_Word')
-            .insert([{ userID, wordID: currentWordID, photoUrl: newPhotoUrl }]);
-            
-        if (linkError) throw linkError;
-
-        res.status(200).json({ success: true, message: "Cập nhật từ thành công!" });
-    } catch (err) {
-        console.error("Lỗi cập nhật từ:", err);
-        res.status(500).json({ success: false, message: "Lỗi hệ thống: " + err.message });
-    }
-});
 
 
 module.exports = router;
