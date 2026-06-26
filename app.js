@@ -14,8 +14,8 @@ var relationshipRouter = require('./routes/relationship');
 var wordRouter = require('./routes/word');
 var studentRouter = require('./routes/student'); 
 var exerciseRouter = require('./routes/exercise'); 
-var missionRouter = require('./routes/student'); 
-var badgeRouter = require('./routes/exercise'); 
+var missionRouter = require('./routes/mission'); 
+var badgeRouter = require('./routes/badge');
 
 var app = express();
 
