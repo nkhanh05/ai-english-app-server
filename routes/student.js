@@ -211,7 +211,7 @@ router.put('/update/:studentId', async (req, res) => {
     }
 });
 
-<<<<<<< HEAD
+//<<<<<<< HEAD
 // ====================================================================
 // 5. POST: FOLLOW NGƯỜI DÙNG KHÁC
 // ====================================================================
@@ -279,4 +279,4 @@ module.exports = router;
 
 
 module.exports = router;
->>>>>>> 0aeee5340ff214bfa3c296e52ffc0972fa943ac2
+//>>>>>>> 0aeee5340ff214bfa3c296e52ffc0972fa943ac2
