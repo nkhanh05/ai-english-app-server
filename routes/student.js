@@ -215,10 +215,13 @@ router.put('/update/:studentId', async (req, res) => {
 // ====================================================================
 // 5. POST: FOLLOW NGƯỜI DÙNG KHÁC
 // ====================================================================
+// ====================================================================
+// 5. POST: FOLLOW NGƯỜI DÙNG KHÁC
+// ====================================================================
 router.post('/follow', async (req, res) => {
     try {
-        // followerID: ID của người đang dùng app bấm nút follow
-        // followingID: ID của người mà bạn muốn follow
+        // followerID: ID của người đang dùng app bấm nút follow (StudentID_1)
+        // followingID: ID của người mà bạn muốn follow (StudentID_2)
         const { followerID, followingID } = req.body;
 
         if (!followerID || !followingID) {
@@ -229,12 +232,17 @@ router.post('/follow', async (req, res) => {
             return res.status(400).json({ success: false, message: "Không thể tự follow chính mình" });
         }
 
+        // Map đúng tên cột StudentID_1 và StudentID_2 trong bảng Relationship
         const { error } = await supabase
-            .from('Follow') // Tên bảng lưu trạng thái follow trong Supabase
-            .insert([{ followerID, followingID }]);
+            .from('Relationship') 
+            .insert([{ 
+                StudentID_1: followerID, 
+                StudentID_2: followingID,
+                Status: 'following' // Bạn có thể thêm trạng thái nếu cần dùng sau này
+            }]);
 
         if (error) {
-            // Check lỗi trùng lặp (nếu DB cài đặt unique constraint cho cặp này)
+            // Check lỗi trùng lặp (dựa trên Primary Key của cặp StudentID_1, StudentID_2)
             if (error.code === '23505') { 
                 return res.status(400).json({ success: false, message: "Bạn đã follow người này rồi" });
             }
@@ -259,11 +267,12 @@ router.delete('/unfollow', async (req, res) => {
             return res.status(400).json({ success: false, message: "Thiếu ID người dùng" });
         }
 
+        // Đổi tên bảng thành Relationship và map đúng tên cột để so sánh
         const { error } = await supabase
-            .from('Follow')
+            .from('Relationship')
             .delete()
-            .eq('followerID', followerID)
-            .eq('followingID', followingID);
+            .eq('StudentID_1', followerID)
+            .eq('StudentID_2', followingID);
 
         if (error) throw error;
 
@@ -273,10 +282,9 @@ router.delete('/unfollow', async (req, res) => {
         res.status(500).json({ success: false, message: "Lỗi hệ thống" });
     }
 });
-
 module.exports = router;
 //=======
 
 
-//module.exports = router;
+module.exports = router;
 //>>>>>>> 0aeee5340ff214bfa3c296e52ffc0972fa943ac2
