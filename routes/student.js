@@ -211,6 +211,7 @@ router.put('/update/:studentId', async (req, res) => {
     }
 });
 
+<<<<<<< HEAD
 // ====================================================================
 // 5. POST: FOLLOW NGƯỜI DÙNG KHÁC
 // ====================================================================
@@ -274,3 +275,8 @@ router.delete('/unfollow', async (req, res) => {
 });
 
 module.exports = router;
+=======
+
+
+module.exports = router;
+>>>>>>> 0aeee5340ff214bfa3c296e52ffc0972fa943ac2
