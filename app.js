@@ -14,6 +14,8 @@ var relationshipRouter = require('./routes/relationship');
 var wordRouter = require('./routes/word');
 var studentRouter = require('./routes/student'); 
 var exerciseRouter = require('./routes/exercise'); 
+var missionRouter = require('./routes/student'); 
+var badgeRouter = require('./routes/exercise'); 
 
 var app = express();
 
@@ -33,6 +35,8 @@ app.use('/api/relationship', relationshipRouter);
 app.use('/api/word', wordRouter);
 app.use('/api/student', studentRouter);
 app.use('/api/exercise', exerciseRouter);
+app.use('/api/mission', missionRouter);
+app.use('/api/badge', badgeRouter);
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
