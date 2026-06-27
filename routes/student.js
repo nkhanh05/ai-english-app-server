@@ -4,10 +4,6 @@ var router = express.Router();
 const supabase = require('../db');
 
 
-const express = require('express');
-const router = express.Router();
-const supabase = require('../db'); // File config kết nối Supabase của bạn
-
 // ==========================================
 // 1. API Cập nhật Streak
 // Yêu cầu: Kiểm tra isStreakmaintained, nếu false thì +1 streak và đổi thành true. Nếu true thì giữ nguyên.
