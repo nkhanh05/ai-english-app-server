@@ -6,6 +6,88 @@ const supabase = require('../db');
 // 1. DÀNH CHO ADMIN
 // ==========================================
 
+
+// Thêm nhiệm vụ mới
+router.post('/admin/add', async (req, res) => {
+    const { missionName, description, type, adminID, startAt, endAt, wordRequire, friendRequire } = req.body;
+    let newMissionID = null;
+
+    try {
+        const { data, error } = await supabase
+            .from('Mission')
+            .insert([{ missionName, description, type, AdminID: adminID, startAt: startAt || null, endAt: endAt || null }])
+            .select('missionID')
+            .single();
+
+        if (error) throw error;
+        newMissionID = data.missionID;
+
+        let childErr = null;
+        if (type === 'Word') {
+            const { error } = await supabase.from('WordMission').insert([{ missionID: newMissionID, wordRequire }]);
+            childErr = error;
+        } else if (type === 'Friend') {
+            const { error } = await supabase.from('FriendMission').insert([{ missionID: newMissionID, friendRequire }]);
+            childErr = error;
+        }
+
+        if (childErr) throw childErr;
+        res.status(201).json({ message: "Thêm nhiệm vụ thành công" });
+    } catch (error) {
+        if (newMissionID) await supabase.from('Mission').delete().eq('missionID', newMissionID);
+        console.error("Lỗi thêm nhiệm vụ:", error);
+        res.status(500).json({ error: "Lỗi server" });
+    }
+});
+
+// Cập nhật nhiệm vụ
+router.put('/admin/update/:missionId', async (req, res) => {
+    const missionId = req.params.missionId;
+    const { missionName, description, type, startAt, endAt, wordRequire, friendRequire } = req.body;
+
+    try {
+        const { error: updateErr } = await supabase
+            .from('Mission')
+            .update({ missionName, description, type, startAt: startAt || null, endAt: endAt || null })
+            .eq('missionID', missionId);
+
+        if (updateErr) throw updateErr;
+
+        await Promise.all([
+            supabase.from('WordMission').delete().eq('missionID', missionId),
+            supabase.from('FriendMission').delete().eq('missionID', missionId)
+        ]);
+
+        if (type === 'Word') {
+            await supabase.from('WordMission').insert([{ missionID: missionId, wordRequire }]);
+        } else if (type === 'Friend') {
+            await supabase.from('FriendMission').insert([{ missionID: missionId, friendRequire }]);
+        }
+
+        res.status(200).json({ message: "Cập nhật thành công" });
+    } catch (error) {
+        res.status(500).json({ error: "Lỗi server" });
+    }
+});
+
+// Xóa nhiệm vụ
+router.delete('/admin/delete/:missionId', async (req, res) => {
+    const missionId = req.params.missionId;
+    try {
+        await Promise.all([
+            supabase.from('Student_Mission').delete().eq('missionID', missionId),
+            supabase.from('WordMission').delete().eq('missionID', missionId),
+            supabase.from('FriendMission').delete().eq('missionID', missionId)
+        ]);
+
+        const { error } = await supabase.from('Mission').delete().eq('missionID', missionId);
+        if (error) throw error;
+        res.status(200).json({ message: "Xóa thành công" });
+    } catch (error) {
+        res.status(500).json({ error: "Lỗi server" });
+    }
+});
+
 // Lấy toàn bộ danh sách nhiệm vụ 
 router.get('/admin/select', async (req, res) => {
     try {
