@@ -29,6 +29,89 @@ router.get('/admin/select', async (req, res) => {
     }
 });
 
+// POST /api/badge/check/:studentID
+router.post('/badge/check/:studentID', async (req, res) => {
+  const { studentID } = req.params;
+
+  try {
+    // 1. Lấy thông tin hiện tại của Student (Streak, TotalExp)
+    const { data: student, error: studentError } = await supabase
+      .from('Student')
+      .select('streak, totalExp')
+      .eq('studentID', studentID)
+      .single();
+
+    if (studentError) throw studentError;
+
+    // Lấy tổng số lượng bạn bè hiện tại
+    const { count: totalFriends, error: friendError } = await supabase
+      .from('Relationship')
+      .select('*', { count: 'exact', head: true })
+      .or(`StudentID_1.eq.${studentID},StudentID_2.eq.${studentID}`)
+      .eq('Status', 'accepted');
+
+    // 2. Lấy danh sách các huy hiệu MÀ HỌC SINH CHƯA CÓ
+    const { data: unearnedBadges, error: badgeError } = await supabase
+      .rpc('get_unearned_badges', { p_student_id: studentID }); 
+      // *Lưu ý: Bạn có thể cần tạo 1 view hoặc query raw để lấy các badge chưa sở hữu. 
+      // Ở đây ta mô phỏng bằng cách lấy toàn bộ badge rồi filter.
+
+    const { data: allBadges } = await supabase
+      .from('Badge')
+      .select(`
+        badgeID, type,
+        ExpBadge(ExpRequire),
+        StreakBadge(streakCount),
+        FriendBadge(friendRequire)
+      `);
+
+    const { data: earnedBadges } = await supabase
+      .from('Student_Badge')
+      .select('badgeID')
+      .eq('studentID', studentID);
+
+    const earnedBadgeIds = earnedBadges.map(b => b.badgeID);
+    const newBadgesToAward = [];
+
+    // 3. Kiểm tra điều kiện cho từng loại huy hiệu
+    for (const badge of allBadges) {
+      if (earnedBadgeIds.includes(badge.badgeID)) continue; // Bỏ qua nếu đã có
+
+      let conditionMet = false;
+
+      if (badge.type === 'exp' && badge.ExpBadge) {
+        conditionMet = student.totalExp >= badge.ExpBadge.ExpRequire;
+      } 
+      else if (badge.type === 'streak' && badge.StreakBadge) {
+        conditionMet = student.streak >= badge.StreakBadge.streakCount;
+      } 
+      else if (badge.type === 'friend' && badge.FriendBadge) {
+        conditionMet = totalFriends >= badge.FriendBadge.friendRequire;
+      }
+
+      if (conditionMet) {
+        newBadgesToAward.push({ studentID: studentID, badgeID: badge.badgeID });
+      }
+    }
+
+    // 4. Cấp huy hiệu mới (Thêm vào bảng Student_Badge)
+    if (newBadgesToAward.length > 0) {
+      const { error: insertError } = await supabase
+        .from('Student_Badge')
+        .insert(newBadgesToAward);
+
+      if (insertError) throw insertError;
+    }
+
+    res.status(200).json({ 
+      message: 'Kiểm tra thành công', 
+      awarded: newBadgesToAward 
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // Thêm huy hiệu mới
 router.post('/admin/add', async (req, res) => {

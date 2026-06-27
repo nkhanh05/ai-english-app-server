@@ -5,7 +5,112 @@ const supabase = require('../db');
 // ==========================================
 // 1. DÀNH CHO ADMIN
 // ==========================================
+router.put('/mission/word/update/:studentID', async (req, res) => {
+  const { studentID } = req.params;
+  const today = new Date().toISOString().split('T')[0];
 
+  try {
+    // 1. Lấy các nhiệm vụ từ vựng đang trong thời hạn và chưa hoàn thành
+    const { data: activeMissions, error: missionError } = await supabase
+      .from('Student_Mission')
+      .select(`
+        missionID,
+        status,
+        Mission!inner(startAt, endAt, type),
+        WordMission!inner(wordRequire)
+      `)
+      .eq('studentID', studentID)
+      .eq('status', 'unfinished')
+      .eq('Mission.type', 'word')
+      .lte('Mission.startAt', today)
+      .gte('Mission.endAt', today);
+
+    if (missionError) throw missionError;
+
+    for (const sm of activeMissions) {
+      // 2. Đếm số lượng từ vựng user đã lưu trong thời gian nhiệm vụ
+      const { count: wordProgress, error: countError } = await supabase
+        .from('User_Word')
+        .select('*', { count: 'exact', head: true })
+        .eq('userID', studentID)
+        .gte('createdAt', sm.Mission.startAt)
+        .lte('createdAt', sm.Mission.endAt);
+
+      if (countError) throw countError;
+
+      // 3. Kiểm tra xem đã đạt điều kiện chưa
+      const isFinished = wordProgress >= sm.WordMission.wordRequire;
+
+      // 4. Cập nhật bảng Student_Mission
+      await supabase
+        .from('Student_Mission')
+        .update({ 
+          progress: wordProgress, 
+          status: isFinished ? 'finished' : 'unfinished' 
+        })
+        .match({ studentID: studentID, missionID: sm.missionID });
+    }
+
+    res.status(200).json({ message: 'Cập nhật nhiệm vụ từ vựng thành công' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PUT /api/mission/friend/update/:studentID
+router.put('/mission/friend/update/:studentID', async (req, res) => {
+  const { studentID } = req.params;
+  const today = new Date().toISOString().split('T')[0];
+
+  try {
+    // 1. Lấy các nhiệm vụ bạn bè đang trong thời hạn và chưa hoàn thành
+    const { data: activeMissions, error: missionError } = await supabase
+      .from('Student_Mission')
+      .select(`
+        missionID,
+        status,
+        Mission!inner(startAt, endAt, type),
+        FriendMission!inner(friendRequire)
+      `)
+      .eq('studentID', studentID)
+      .eq('status', 'unfinished')
+      .eq('Mission.type', 'friend')
+      .lte('Mission.startAt', today)
+      .gte('Mission.endAt', today);
+
+    if (missionError) throw missionError;
+
+    for (const sm of activeMissions) {
+      // 2. Đếm số lượng bạn bè mới kết bạn trong thời gian nhiệm vụ
+      // Lưu ý: Tùy logic của bạn, status trong Relationship có thể là 'accepted'
+      const { count: friendProgress, error: countError } = await supabase
+        .from('Relationship')
+        .select('*', { count: 'exact', head: true })
+        .or(`StudentID_1.eq.${studentID},StudentID_2.eq.${studentID}`)
+        .eq('Status', 'accepted') // Hoặc giá trị tương ứng biểu thị đã là bạn bè
+        .gte('startAt', sm.Mission.startAt)
+        .lte('startAt', sm.Mission.endAt);
+
+      if (countError) throw countError;
+
+      // 3. Kiểm tra điều kiện
+      const isFinished = friendProgress >= sm.FriendMission.friendRequire;
+
+      // 4. Cập nhật tiến độ
+      await supabase
+        .from('Student_Mission')
+        .update({ 
+          progress: friendProgress, 
+          status: isFinished ? 'finished' : 'unfinished' 
+        })
+        .match({ studentID: studentID, missionID: sm.missionID });
+    }
+
+    res.status(200).json({ message: 'Cập nhật nhiệm vụ bạn bè thành công' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // Thêm nhiệm vụ mới
 router.post('/admin/add', async (req, res) => {
