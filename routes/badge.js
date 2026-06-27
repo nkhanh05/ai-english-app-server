@@ -5,6 +5,30 @@ const supabase = require('../db'); // Trỏ đến file config Supabase JS của
 // ==========================================
 // 1. DÀNH CHO ADMIN
 // ==========================================
+router.get('/admin/select', async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('Badge')
+            .select(`
+                *,
+                ExpBadge (ExpRequire),
+                FriendBadge (friendRequire),
+                StreakBadge (streakCount)
+            `)
+            .order('badgeID', { ascending: true }); // Sắp xếp theo ID cho đẹp
+
+        if (error) throw error;
+        
+        // Dữ liệu trả về sẽ tự động có format: 
+        // [{ badgeID, badgeName, type: 'Exp', ExpBadge: [{ExpRequire: 100}], ... }]
+        // Format này khớp hoàn hảo 100% với hàm Badge.fromJson bên Flutter của bạn!
+        res.status(200).json(data);
+    } catch (error) {
+        console.error("Lỗi lấy danh sách huy hiệu (Admin):", error);
+        res.status(500).json({ error: "Lỗi server" });
+    }
+});
+
 
 // Thêm huy hiệu mới
 router.post('/admin/add', async (req, res) => {
