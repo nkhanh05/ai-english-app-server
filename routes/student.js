@@ -3,6 +3,148 @@ var express = require('express');
 var router = express.Router();
 const supabase = require('../db');
 
+
+const express = require('express');
+const router = express.Router();
+const supabase = require('../db'); // File config kết nối Supabase của bạn
+
+// ==========================================
+// 1. API Cập nhật Streak
+// Yêu cầu: Kiểm tra isStreakmaintained, nếu false thì +1 streak và đổi thành true. Nếu true thì giữ nguyên.
+// ==========================================
+router.put('/:studentId/streak', async (req, res) => {
+    const studentID = parseInt(req.params.studentId, 10);
+
+    try {
+        // Bước 1: Lấy thông tin streak hiện tại của học sinh
+        const { data: studentData, error: fetchError } = await supabase
+            .from('Student')
+            .select('streak, isStreakmaintained')
+            .eq('studentID', studentID)
+            .single();
+
+        if (fetchError) throw fetchError;
+
+        // Bước 2: Kiểm tra xem hôm nay đã duy trì streak chưa
+        if (studentData.isStreakmaintained === true) {
+            return res.status(200).json({ 
+                success: true, 
+                message: "Streak đã được duy trì trước đó, không cộng thêm." 
+            });
+        }
+
+        // Bước 3: Nếu chưa duy trì, tiến hành +1 streak và cập nhật trạng thái
+        const newStreak = (studentData.streak || 0) + 1;
+        
+        const { error: updateError } = await supabase
+            .from('Student')
+            .update({ 
+                streak: newStreak, 
+                isStreakmaintained: true 
+            })
+            .eq('studentID', studentID);
+
+        if (updateError) throw updateError;
+
+        res.status(200).json({ 
+            success: true, 
+            message: "Cập nhật Streak thành công!", 
+            newStreak: newStreak 
+        });
+
+    } catch (error) {
+        console.error("Lỗi cập nhật Streak:", error);
+        res.status(500).json({ success: false, error: "Lỗi server" });
+    }
+});
+
+// ==========================================
+// 2. API Cập nhật Tổng Kinh Nghiệm (Total EXP)
+// Yêu cầu: Cộng thêm số EXP truyền vào từ body vào số EXP hiện tại trong DB
+// ==========================================
+router.put('/:studentId/total-exp', async (req, res) => {
+    const studentID = parseInt(req.params.studentId, 10);
+    // Lưu ý: totalExp gửi từ Flutter giờ đóng vai trò là "số exp được cộng thêm"
+    const expToAdd = parseInt(req.body.totalExp, 10); 
+
+    if (isNaN(expToAdd) || expToAdd <= 0) {
+        return res.status(400).json({ success: false, error: "Số EXP không hợp lệ" });
+    }
+
+    try {
+        // Lấy số EXP hiện tại
+        const { data: studentData, error: fetchError } = await supabase
+            .from('Student')
+            .select('totalExp')
+            .eq('studentID', studentID)
+            .single();
+
+        if (fetchError) throw fetchError;
+
+        // Cộng dồn
+        const currentExp = studentData.totalExp || 0;
+        const updatedTotalExp = currentExp + expToAdd;
+
+        // Cập nhật lại vào DB
+        const { error: updateError } = await supabase
+            .from('Student')
+            .update({ totalExp: updatedTotalExp })
+            .eq('studentID', studentID);
+
+        if (updateError) throw updateError;
+
+        res.status(200).json({ success: true, message: "Cập nhật Total EXP thành công", totalExp: updatedTotalExp });
+
+    } catch (error) {
+        console.error("Lỗi cập nhật Total EXP:", error);
+        res.status(500).json({ success: false, error: "Lỗi server" });
+    }
+});
+
+// ==========================================
+// 3. API Cập nhật Kinh Nghiệm Tuần (Weekly EXP)
+// Yêu cầu: Cộng thêm số EXP truyền vào từ body vào số Weekly EXP hiện tại trong DB
+// ==========================================
+router.put('/:studentId/weekly-exp', async (req, res) => {
+    const studentID = parseInt(req.params.studentId, 10);
+    // Lưu ý: weeklyExp gửi từ Flutter giờ đóng vai trò là "số exp được cộng thêm"
+    const expToAdd = parseInt(req.body.weeklyExp, 10);
+
+    if (isNaN(expToAdd) || expToAdd <= 0) {
+        return res.status(400).json({ success: false, error: "Số EXP không hợp lệ" });
+    }
+
+    try {
+        // Lấy số Weekly EXP hiện tại
+        const { data: studentData, error: fetchError } = await supabase
+            .from('Student')
+            .select('weeklyExp')
+            .eq('studentID', studentID)
+            .single();
+
+        if (fetchError) throw fetchError;
+
+        // Cộng dồn
+        const currentWeeklyExp = studentData.weeklyExp || 0;
+        const updatedWeeklyExp = currentWeeklyExp + expToAdd;
+
+        // Cập nhật lại vào DB
+        const { error: updateError } = await supabase
+            .from('Student')
+            .update({ weeklyExp: updatedWeeklyExp })
+            .eq('studentID', studentID);
+
+        if (updateError) throw updateError;
+
+        res.status(200).json({ success: true, message: "Cập nhật Weekly EXP thành công", weeklyExp: updatedWeeklyExp });
+
+    } catch (error) {
+        console.error("Lỗi cập nhật Weekly EXP:", error);
+        res.status(500).json({ success: false, error: "Lỗi server" });
+    }
+});
+
+
 router.post('/check/word/', async (req, res) => {
     try {
         const { term, definition } = req.body;
